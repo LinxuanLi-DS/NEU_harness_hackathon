@@ -275,15 +275,27 @@ layer doing the real enforcing.
 
 ## Results
 
-Qwen3.5-9B Q4_K_M, local, 31 questions, execution-match grading:
+Qwen3.5-9B Q4_K_M on the local synthetic database, graded by SQL result match:
 
-| | Baseline (raw DDL, one shot) | Harness (M-Schema + tools) |
-|---|---|---|
-| **Overall** | 20/31 — 64.5% | **28/31 — 90.3%** |
-| Median latency | 1.0 s/question | 6.0 s/question, median 3 steps |
+| Evaluation | Baseline (raw DDL, one shot) | Harness (M-Schema + tools) |
+| --- | ---: | ---: |
+| Replay of committed SQL on the original questions | 20/31 (64.5%) | 28/31 (90.3%) |
+| Fresh inference on the original questions | 20/31 (64.5%) | **27/31 (87.1%)** |
+| Fresh inference on eight additional questions over the same schema | 3/8 (37.5%) | 6/8 (75.0%) |
 
-The per-defect breakdown is the real result. The harness earns its keep on the
-defects it was built for and holds everywhere else:
+In the [runtime verification](review_runtime_20260914/REPORT.md), fresh inference on
+the original questions took 33.64 s for the baseline and 235.52 s for the harness.
+The runs reported about 51k and 547k tokens, respectively. The fresh harness run
+missed Q05, Q07, Q10 and Q14. The report records the model settings, sample
+outputs and remaining defects.
+
+The harness receives additional business context and can take more inference steps.
+The extra questions test new queries over the same database and defect families.
+See [Running the eval](#running-the-eval) for commands and
+[`eval/out/`](eval/out/) for the original evaluation artifacts.
+
+<details>
+<summary>Per-defect breakdown for the committed 28/31 result</summary>
 
 | Defect | Baseline | Harness | |
 |---|---|---|---|
@@ -297,28 +309,7 @@ defects it was built for and holds everywhere else:
 | **controls** | 6/6 | **6/6** | — |
 | D6 duplicate entities | 2/2 | 1/2 | −50 |
 
-The one regression (D6) is a single question where the agent hit its 12-step
-limit rather than a wrong answer.
-
-**Reproducibility.** Three consecutive runs of identical code scored 28/31 every
-time, with the *same three* questions failing each run (Q05, Q10, Q14) and no
-question flipping between runs. The baseline scored 20/31 in every run, including
-after the grader fix — so the tolerance change rescued no baseline answer, and
-the lift is not a measurement artefact.
-
-Latency across those runs: median 6.3 s/question, p90 11.2 s, max 61.6 s (the
-Q14 step-limit case).
-
-### The three remaining failures
-
-Left unfixed on purpose — they are model limitations, not harness bugs, and
-pretending otherwise would mean tuning the harness to the test set:
-
-| | Why it fails |
-|---|---|
-| Q05 (D2) | Returns three status rows where the question asks for two. The value domain *is* in the schema card; the model over-answers. |
-| Q10 (D4+D10) | Needs the status disambiguation **and** the cents/dollars normalisation in one query. `resolve_term` supplies both; the model applies one. |
-| Q14 (D6) | Hits the 12-step limit exploring duplicate company names instead of returning the distinct count. |
+</details>
 
 The baseline's answer to *"what is the highest single usage value recorded?"*
 was the string **`'N/A'`** — `MAX()` on a VARCHAR column comparing lexically,
